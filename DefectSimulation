@@ -1,0 +1,380 @@
+import matplotlib.pyplot as plt  # importing python graph library
+import networkx as nx            # importing python network library
+import random                    # importing random generator library
+
+"""
+CREATE STATE TRANSITION DICTIONARY
+The following code defines a state transition dictionary of defects flowing through their treatment process as 
+defined by their statuses. 
+The key is a tuple (from, to) that identifies the from_state and to_state of the defect. 
+The value is the probability of the defect moving along the path from_state to to_state.
+"""
+STATE_DICT = {
+    ('start', 'new'):             [0.80, 0.001],
+    ('start', 'open'):            [0.15, 0.001],
+    ('start', 'in_fix'):          [0.05, 0.001],
+    ('new', 'enhancement'):       [0.03, 0.100],
+    ('enhancement', 'end'):       [1.00, 0.100],
+    ('new', 'deferred'):          [0.05, 0.150],
+    ('deferred', 'end'):          [1.00, 0.100],
+    ('new', 'open'):              [0.92, 0.250],
+    ('open', 'withdrawn'):        [0.01, 0.500],
+    ('withdrawn', 'end'):         [1.00, 0.100],
+    ('open', 'rejected'):         [0.19, 0.500],
+    ('open', 'in_fix'):           [0.80, 0.500],
+    ('rejected', 'open'):         [0.30, 1.000],
+    ('rejected', 'end'):          [0.70, 0.500],
+    ('in_fix', 'fixed'):          [1.00, 1.500],
+    ('fixed', 'retest'):          [1.00, 0.500],
+    ('retest', 'failed_retest'):  [0.20, 0.125],
+    ('failed_retest', 'in_fix'):  [1.00, 0.050],
+    ('retest', 'closed'):         [0.80, 0.250],
+    ('closed', 're_open'):        [0.10, 3.000],
+    ('closed', 'end'):            [0.90, 0.125],
+    ('re_open', 'in_fix'):        [1.00, 0.800]
+}
+
+"""
+DEFECT SEVERITY DICTIONARY
+This code creates the Severity dictionary having:
+key = code of severity
+value = (severity name, severity prob)
+"""
+SEVERITY_DICT = {
+    's1': ('critical', 0.05),
+    's2': ('high',     0.15),
+    's3': ('medium',   0.30),
+    's4': ('low',      0.50)
+}
+
+"""
+DEFECT PRIORITY DICTIONARY
+This code creates the Priority dictionary
+"""
+PRIORITY_DICT = {
+    'p1': ('high',   0.25),
+    'p2': ('medium', 0.35),
+    'p3': ('low',    0.40)
+}
+
+"""
+GLOBAL VARIABLES
+"""
+ALL_PATHS = sorted(STATE_DICT.keys())                       # all relevant paths in state transition
+ALL_FROM_STATES = sorted(set(map(lambda k: k[0], STATE_DICT.keys())))    # list of all 'from' states
+ALL_TO_STATES = sorted(set(map(lambda k: k[1], STATE_DICT.keys())))      # list of all 'to' states
+ALL_STATES = sorted(set(ALL_FROM_STATES) | set(ALL_TO_STATES))           # list of all states (statuses)
+N_ALL_PATHS = len(ALL_PATHS)                                # number of all legal paths defined in the state transition
+N_FROM_STATES = len(ALL_FROM_STATES)                        # number of all 'from' nodes
+N_TO_STATES = len(ALL_TO_STATES)                            # number of all 'to' nodes
+ALL_PROBABILITIES = list(STATE_DICT.values())               # list of probabilities for paths
+
+"""
+VALIDATING THE STATE TRANSITION NETWORK STATE_DICT NODES
+"""
+
+
+def select_from_states(fs):
+    """
+    Returns all the tuples in the STATE_DICT dictionary key having a 'from' state of fs
+    :param fs: 'from' status
+    :return:   list of all nodes having a 'from' status
+    """
+    fs_paths = []
+    [fs_paths.append(ALL_PATHS[i]) for i in range(N_ALL_PATHS) if ALL_PATHS[i][0] == fs]
+    return fs_paths
+
+
+def select_to_states(ts):
+    """
+    Returns all the tuples in the STATE_DICT dictionary key having a 'to' state of ts
+    :param ts: 'to' status
+    :return:   list of all nodes having a 'to' status
+    """
+    ts_paths = []
+    [ts_paths.append(ALL_PATHS[i]) for i in range(N_ALL_PATHS) if ALL_PATHS[i][1] == ts]
+    return ts_paths
+
+
+def single_check_prob(fs_paths):
+    """
+    Checks that the sum of the probabilities for a specific 'from' node to all its 'to' nodes equals 1.0
+    :param fs_paths: list of all paths having a specific 'from' state
+    :return [fs_prob, fs_prob_list]:
+    """
+    n_fs_paths = len(fs_paths)                   # number of paths in fs_paths
+    fs_prob = 0.0                                # initializing probability sum
+    fs_prob_list = []                            # initializing probability list
+
+    for el in fs_paths:                          # iterating over all paths in fs_paths
+        fs_prob_list.append(STATE_DICT[el][0])   # creates a probability list of all probabilities of paths in fs_paths
+        fs_prob += STATE_DICT[el][0]             # sum probabilities
+
+    return [fs_prob, fs_prob_list]
+
+
+def all_check_prob():
+    """
+    Checks ALL 'from' node probabilities to make sure that for each 'from' node,
+    all its 'to' node' probabilities equal 1.0
+    :return: 1 if all probabilities sum to 1.0 or 0.0 otherwise
+    """
+    ok_result = []
+    not_ok_result = []
+
+    for el in ALL_FROM_STATES:                    # iterating over all 'from' states
+        fs_paths = select_from_states(el)         # identifying all the fs_paths for each of the 'from' states
+        fs_prob = single_check_prob(fs_paths)[0]  # checking that the probabilities of fs_paths sum to 1.0
+
+        # split paths into 2 lists: 'OK' for paths w prob sum to 1 and 'NOT OK' for paths w prob sum not eq 1
+        if fs_prob == 1.0:  # if fs_prob (sum of fs_paths probabilities) equals 1.0
+            ok_result.append((el, fs_prob))       # add to ok_result list
+        else:                                     # if not
+            not_ok_result.append((el, fs_prob))   # add to not_ok_result list
+
+    if len(not_ok_result) > 0:                    # if not_ok_result is not empty
+        return 0
+    else:
+        return 1
+
+
+def state_transition_dic():
+    """
+    defining and validating the STATE_DICT
+    :return:
+    """
+    dic_status = all_check_prob()      # checking all probabilities of 'from' statuses
+    return [dic_status, STATE_DICT]
+
+
+"""
+VISUALIZING GRAPH AND PROVIDING BASIC STATISTICS
+"""
+
+
+def visualize_stn():
+    """
+    produce a state transition network graph of the STATE_DICT
+    :return:
+    """
+    G = nx.DiGraph()  # creating an empty graph
+    node_xy = {
+        'closed':        (720,  40),
+        'deferred':      (-20,   0),
+        'end':           (90,  -80),
+        'enhancement':   (-130, 10),
+        'failed_retest': (400,   0),
+        'fixed':         (400,  40),
+        'in_fix':        (240,  40),
+        'new':           (-80,  40),
+        'open':          (80,   40),
+        're_open':       (400,  70),
+        'rejected':      (160, -20),
+        'retest':        (560,  40),
+        'start':         (80,  100),
+        'withdrawn':     (90,  -10)
+    }
+
+    # adding nodes as defined in all_states
+    G.add_nodes_from(ALL_STATES)
+    # adding edges as defined in all_paths
+    G.add_edges_from(ALL_PATHS)
+
+    # drawing the graph
+    nx.draw(G, pos=node_xy, with_labels=True, font_size=10, arrows=True)
+
+    # defining edge labels
+    edges_labels = dict((k, "prob={}\navg_time={}".format(STATE_DICT.get(k)[0], STATE_DICT.get(k)[1])) for k in STATE_DICT.keys())
+    # drawing edge labels
+    nx.draw_networkx_edge_labels(G, pos=node_xy, edge_labels=edges_labels, font_size=7)
+
+    # resizing graph visualization to fit full screen
+    mng = plt.get_current_fig_manager()
+    mng.window.showMaximized()
+
+    plt.show()
+
+
+def dic_stats():
+    """
+    produces basic statistics re the STATE_DICT dictionary
+    :return:
+    """
+    print('The list of paths are:\n{}'.format(sorted(ALL_PATHS)))
+    print('The list of all \'from\' states are:\n{}'.format(sorted(ALL_FROM_STATES)))
+    print('The list of all \'to\' states are:\n{}'.format(sorted(ALL_TO_STATES)))
+    print('The total number of defined paths are: ', N_ALL_PATHS)
+    print('The number of defined \'from\' states are: ', N_FROM_STATES)
+    print('The number of defined \'to\' states are: ', N_TO_STATES)
+
+
+"""
+CREATING DEFECT SIMULATION PATHS INCL DEFECT CHARACTERISTICS
+"""
+
+
+def path_randomizer(fs):
+    """
+    This code chooses the next path in the network based on the 'from' node you are on and the possible 'to'
+    nodes based on the probabilities.
+    Documentation: https://docs.python.org/3/library/random.html
+    :param fs: 'from' state
+    :return: next path based on path probabilites
+    """
+    fs_paths = select_from_states(fs)                    # identifies all the fs_paths from the fs parameter
+    fs_prob_list = single_check_prob(fs_paths)[1]        # creates the probability list for all the paths in fs_paths
+    next_path = random.choices(fs_paths, weights=fs_prob_list, k=1)[0]  # identifies the next path
+    return next_path                                     # function returns the next path
+
+
+def od_round(n, dec):
+    """
+    customized rounding function based on converting the number to a string, rounding, and re-coverting to float
+    :param n:     # the number to be rounded
+    :param dec:   # determines how many numbers after the decimal point
+    :return:
+    """
+    x = str(n).split('.')
+    rounded = int(x[0]) + float((x[1][0:dec]))/(10 ** dec)
+    return rounded
+
+
+def treatment_time(key):
+    """
+    Creates a treatment time estimation for each node based on time distribution.
+    Using the EXPONENTIAL distribution.
+    This distribution describes the time between events, i.e., the time it takes a defect to move from
+    one node to the next
+    :param key: key tuple in STATE_DICT. key[1] = avg treatment time used as input to the exp distribution
+    :return: estimated treatment time of defect from the 'from' status to the 'to' status
+    """
+    key_avg_time = STATE_DICT[key][1]
+    treatment_time_est = random.expovariate(1.0 / key_avg_time)
+    return od_round(treatment_time_est, 3)
+
+
+def path_to_key(path):
+    """
+    # receives a single path within the state transition network and converts to key tuples
+    (list of keys in the STATE_DICT)
+    containing key-tuples for the state_dic
+    :param path: a list of nodes (statuses)
+    :return: tuples in the form (fs, ts)
+    """
+    return list((path[i], path[i + 1]) for i in range(len(path) - 1))
+
+
+def single_path():
+    """
+    The following code traces the path of ONE defect along the state transition network and for each node
+    calculates the treatment time. Currently the treatment time is hard coded, but ultimately should be calculated
+    as defect history is accumulated.
+    :return: path, count of statuses within the path (not including 'start', sum of treatment times along the path
+    """
+    # Always start at 'new'. Initial definition of fs as 'new' and first node of path list
+    fs = 'start'
+    path = list()
+    path.append(fs)
+    # initializes the number of nodes traversed until 'end'
+    iter_count = 0
+    # initializes the accumulated treatment time as defect traverses through the nodes
+    treatment_time_estimate = 0
+    while path[-1] != 'end':             # while 'from' state is not equal to 'end'
+        fs = path_randomizer(fs)[1]
+        path.append(fs)                  # add the next fs to the path list
+        iter_count += 1                  # add 1 to the count
+
+    keys = path_to_key(path)
+
+    # create keys from path and place in keys
+    for el in keys:                                    # iterate over all elements in keys
+        treatment_time_estimate += treatment_time(el)  # access treatment time in STATE_DICT for each key and sum
+
+    return [path, iter_count, round(treatment_time_estimate, 3)]
+
+
+def check_dic_prob(dictionary):
+    """
+    Checks that the probabilities for dictionaries sum to 1.
+    Dictionary will have the structure (key,var = prob)
+    :param dictionary: currently has two values - 'SEVERITY_DICT' or 'PRIORITY_DICT
+    :return:
+    """
+    sum_prob = 0.0                     # initializing probability sum
+    k = list(dictionary.keys())        # placing dictionary keys in list
+    for el in k:                       # iterating over all elements in key list
+        sum_prob += dictionary[el][1]  # sum all probabilites
+    if sum_prob == 1.0:                # if the sum is equal to 1.0
+        return 1                       # return 1, i.e., the dictionary is OK
+    else:                              # if the sum is NOT equal to 1.0
+        return 0
+
+
+def sev_pri_select(dictionary):
+    """
+    creates a tuple (severity, priority) of random severity and priority values (as per dictionaries) by their
+    respective value probabilities
+    :param dictionary: the priority or severity dictionary
+    :return: random selection of dictionary keys (severity / priority levels) based on probabilities
+    """
+    # provides a list of the keys as the population definition
+    pop_list = list(dictionary.keys())
+    # provides a list of values
+    pop_desc = list(dictionary.values())
+    # provides the probabilities for the keys
+    pop_prob = list(zip(*pop_desc))[1]
+    # provides one random selection (k = 1) of the population based on probabilities
+    selection = random.choices(pop_list, weights=pop_prob, k=1)[0]
+    return dictionary[selection][0]
+
+
+"""
+CREATING DEFECT SIMULATION DATA SET
+"""
+
+
+def create_paths():
+    """
+    The following code produces n paths for n number of defects traversing the State Transition Network
+    :return: n paths
+    """
+    path_num = int(input('How many defects do you want to simulate?'))
+    simulated_paths = {}
+    for i in range(path_num):
+        severity = sev_pri_select(SEVERITY_DICT)
+        priority = sev_pri_select(PRIORITY_DICT)
+        sev_pri = [severity, priority]
+        simulated_paths[i] = single_path()
+        simulated_paths[i].append(sev_pri)
+    return simulated_paths
+
+
+# MAIN PROGRAM
+def main():
+    """
+    This is the executable initiating the application and managing its flow
+    :return:
+    """
+    dic_status = all_check_prob()
+    print('State Transition Dictionary is OK' if dic_status == 1 else print('State Transition Dictionary is Not OK'))
+
+    # Visualizing state transition network
+    visualize_stn()
+
+    # provides basic statistics of the state transition network
+    dic_stats()
+
+    sev_check_status = check_dic_prob(SEVERITY_DICT)  # checks severity dictionary
+    print('severity dictionary is OK') if sev_check_status == 1 else print('severity dictionary is Not OK')
+
+    pri_check_status = check_dic_prob(PRIORITY_DICT)  # checks priority dictinary
+    print('priority dictionary is OK') if pri_check_status == 1 else print('priority dictionary is Not OK')
+
+    # simulating n paths
+    defects = create_paths()
+    for i in defects:
+        print(i, defects[i])
+
+
+if __name__ == '__main__':
+    main()
